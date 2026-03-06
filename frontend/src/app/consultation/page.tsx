@@ -23,6 +23,7 @@ type ClinicalReasoning = {
   risk_level: string;
   specialist: string;
   treatment_advice: string;
+  body_systems?: string[];
 };
 
 export default function ConsultationPage() {
@@ -259,6 +260,20 @@ export default function ConsultationPage() {
 
               {reasoning ? (
                  <>
+                    {/* Body Systems */}
+                    {reasoning.body_systems && reasoning.body_systems.length > 0 && (
+                      <div>
+                        <div className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-2">Primary Body Systems</div>
+                        <div className="flex flex-wrap gap-2">
+                          {reasoning.body_systems.map((system, idx) => (
+                              <span key={idx} className="bg-purple-50 text-purple-700 border border-purple-200 px-2 py-1 rounded text-xs capitalize font-medium">
+                                  {system}
+                              </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Assessment Narrative */}
                     <div>
                         <div className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-2">Clinical Assessment</div>

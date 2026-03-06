@@ -13,3 +13,4 @@ class ClinicalReasoningResponse(BaseModel):
     risk_level: str = Field(..., description="emergency, urgent, moderate, low_risk")
     specialist: str = Field(..., description="Recommended medical specialist")
     treatment_advice: str = Field(..., description="General advice or home care instructions")
+    body_systems: Optional[List[str]] = Field(default=[], description="Affected body systems according to clinical graph")

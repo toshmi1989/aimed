@@ -1,0 +1,82 @@
+{
+  "chest pain": {
+    "systems": ["cardiovascular", "pulmonary", "musculoskeletal", "gastrointestinal"],
+    "possible_conditions": [
+      "angina",
+      "myocardial infarction",
+      "pulmonary embolism",
+      "pneumonia",
+      "muscle strain",
+      "GERD"
+    ],
+    "recommended_tests": [
+      "ECG",
+      "troponin",
+      "chest X-ray",
+      "D-dimer"
+    ]
+  },
+  "shortness of breath": {
+    "systems": ["pulmonary", "cardiovascular"],
+    "possible_conditions": [
+      "asthma",
+      "COPD exacerbation",
+      "heart failure",
+      "pulmonary embolism",
+      "pneumonia"
+    ],
+    "recommended_tests": [
+      "chest X-ray",
+      "spirometry",
+      "BNP",
+      "D-dimer"
+    ]
+  },
+  "fever": {
+    "systems": ["systemic", "immune"],
+    "possible_conditions": [
+      "viral infection (e.g., Influenza, COVID-19)",
+      "bacterial infection (e.g., Strep throat, UTI)",
+      "malaria",
+      "sepsis"
+    ],
+    "recommended_tests": [
+      "CBC",
+      "CRP",
+      "blood culture",
+      "urinalysis"
+    ]
+  },
+  "cough": {
+    "systems": ["pulmonary"],
+    "possible_conditions": [
+      "viral URI",
+      "acute bronchitis",
+      "asthma",
+      "GERD",
+      "pneumonia",
+      "COVID-19"
+    ],
+    "recommended_tests": [
+      "chest X-ray",
+      "sputum culture",
+      "COVID-19 swab"
+    ]
+  },
+  "headache": {
+    "systems": ["neurological", "systemic"],
+    "possible_conditions": [
+      "tension headache",
+      "migraine",
+      "sinusitis",
+      "dehydration",
+      "hypertension",
+      "meningitis (if severe)"
+    ],
+    "recommended_tests": [
+      "blood pressure check",
+      "neurological exam",
+      "CT head (if thunderclap)"
+    ]
+  }
+}
