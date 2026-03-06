@@ -1,14 +1,13 @@
 "use client";
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Activity, User, ShieldAlert, FileText, AlertCircle, Video } from 'lucide-react';
+import { Send, Activity, User, ShieldAlert, FileText, AlertCircle, Video, FileSearch } from 'lucide-react';
 
 type Message = {
   role: 'ai' | 'user';
   content: string;
 };
 
-// Represents the medical state we track throughout the conversation
 type AnamnesisState = {
   age?: number;
   sex?: string;
@@ -17,74 +16,71 @@ type AnamnesisState = {
   associated_symptoms: string[];
 };
 
+type ClinicalReasoning = {
+  assessment: string;
+  possible_causes: string[];
+  recommended_tests: string[];
+  risk_level: string;
+  specialist: string;
+  treatment_advice: string;
+};
+
 export default function ConsultationPage() {
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'ai', content: "Hello! I am your AI Medical Triage Assistant. Could you please describe what is bothering you today?" }
+    { role: 'ai', content: "Hello! I am your AI Medical Assistant. Could you please describe what is bothering you today?" }
   ]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   
-  // Real conversation state
   const [consultationId] = useState(() => crypto.randomUUID());
   const [symptoms, setSymptoms] = useState<string[]>([]);
-  const [anamnesis, setAnamnesis] = useState<AnamnesisState>({ associated_symptoms: [] });
-  const [riskLevel, setRiskLevel] = useState<string | null>(null);
-  const [possibleCauses, setPossibleCauses] = useState<string[]>([]);
+  const [anamnesis] = useState<AnamnesisState>({ associated_symptoms: [] });
+  const [reasoning, setReasoning] = useState<ClinicalReasoning | null>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
   useEffect(() => {
-    scrollToBottom();
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isTyping]);
 
   const handleSend = async () => {
     if (!input.trim()) return;
     
-    // Add user message
     const userMsg = input;
     setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
     setInput('');
     setIsTyping(true);
 
-    // Naive symptom extraction (In a real app, an LLM would parse the userMsg to update anamnesis state)
-    // For this MVP, we will pass the entire conversation history as context if needed, 
-    // but the backend expects structured lists. We'll append the raw text as a "symptom" for the mock engine.
     const updatedSymptoms = [...symptoms, userMsg];
     setSymptoms(updatedSymptoms);
 
     try {
-      // Call the Python FastAPI Backend
-      const response = await fetch('http://127.0.0.1:8000/triage/', {
+      // 1. Triage API for conversation flow
+      const triageRes = await fetch('http://127.0.0.1:8000/triage/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          symptoms: updatedSymptoms,
-          anamnesis: anamnesis
-        })
+        body: JSON.stringify({ symptoms: updatedSymptoms, anamnesis: anamnesis })
       });
+      const triageData = await triageRes.json();
 
-      if (!response.ok) throw new Error("Failed to reach triage engine");
-      
-      const data = await response.json();
-      
-      // Update UI state with AI analysis
-      setRiskLevel(data.risk_level);
-      setPossibleCauses(data.possible_causes);
+      // 2. Clinical Reasoning API to build the RAG Trace
+      const reasonRes = await fetch('http://127.0.0.1:8000/clinical/reason', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symptoms: updatedSymptoms, anamnesis: anamnesis })
+      });
+      const reasonData = await reasonRes.json();
+      setReasoning(reasonData);
 
-      // Determine next AI message
+      // Determine next AI message based on Risk and Triage
       let aiResponseText = "";
       
-      if (data.risk_level === "emergency") {
-        aiResponseText = "⚠️ EMERGENCY RISK DETECTED. " + data.recommended_action;
-      } else if (data.next_questions && data.next_questions.length > 0) {
-        // Just ask the first question for simplicity
-        aiResponseText = data.next_questions[0]; 
+      if (reasonData.risk_level === "emergency") {
+        aiResponseText = "⚠️ EMERGENCY RISK DETECTED. " + reasonData.treatment_advice;
+      } else if (triageData.next_questions && triageData.next_questions.length > 0) {
+        aiResponseText = triageData.next_questions[0]; 
       } else {
-        aiResponseText = `Based on our conversation, possible causes include: ${data.possible_causes.join(', ')}. ${data.recommended_action}`;
+        aiResponseText = `Based on my assessment, possible causes include: ${reasonData.possible_causes.join(', ')}. ${reasonData.treatment_advice}`;
       }
 
       setMessages(prev => [...prev, { role: 'ai', content: aiResponseText }]);
@@ -93,7 +89,7 @@ export default function ConsultationPage() {
       console.error(error);
       setMessages(prev => [...prev, { 
         role: 'ai', 
-        content: "I'm having trouble connecting to my medical database. Please try again. If this is an emergency, call your local emergency number." 
+        content: "I'm having trouble connecting to my medical database. Please try again or seek emergency care if needed." 
       }]);
     } finally {
       setIsTyping(false);
@@ -103,30 +99,28 @@ export default function ConsultationPage() {
   return (
     <div className="flex h-[calc(100vh-4rem)] max-w-7xl mx-auto w-full">
       {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col bg-white border-r">
+      <div className="flex-1 flex flex-col bg-white border-r relative">
         {/* Chat Header */}
-        <div className="h-16 border-b flex items-center justify-between px-6 bg-slate-50">
+        <div className="h-16 border-b flex items-center justify-between px-6 bg-slate-50 shrink-0">
           <div className="flex items-center">
             <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center mr-4">
               <Activity className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="font-semibold text-slate-900 leading-tight">AI Medical Triage</h2>
-              <p className="text-xs text-slate-500 font-medium font-mono">
-                ID: {consultationId.split('-')[0]}
-              </p>
+              <h2 className="font-semibold text-slate-900 leading-tight">AI Clinical Assistant</h2>
+              <p className="text-xs text-slate-500 font-medium font-mono">ID: {consultationId.split('-')[0]}</p>
             </div>
           </div>
-          {riskLevel === 'emergency' && (
+          {reasoning?.risk_level === 'emergency' && (
              <div className="animate-pulse bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs font-bold border border-red-200">
-               EMERGENCY PROTOCOL ACTIVE
+               EMERGENCY PROTOCOL
              </div>
           )}
         </div>
 
         {/* Emergency Escalation Banner */}
-        {riskLevel === 'emergency' && (
-          <div className="bg-red-500 text-white p-4 flex items-center gap-4 justify-center shadow-inner z-10 transition-all">
+        {reasoning?.risk_level === 'emergency' && (
+          <div className="bg-red-500 text-white p-4 flex items-center gap-4 justify-center shadow-inner z-10 shrink-0">
             <AlertCircle className="w-8 h-8 shrink-0" />
             <div>
               <h3 className="font-bold text-lg">EMERGENCY DETECTED</h3>
@@ -141,7 +135,7 @@ export default function ConsultationPage() {
             <div className="bg-blue-50 text-blue-800 p-4 rounded-xl text-sm border border-blue-100 flex gap-3">
               <ShieldAlert className="w-5 h-5 shrink-0 text-blue-600 mt-0.5" />
               <div>
-                <strong>Medical Disclaimer:</strong> I am an AI designed for preliminary triage and not a replacement for a licensed doctor. In a medical emergency, please call your local emergency number immediately.
+                <strong>Medical Disclaimer:</strong> I am an AI designed for preliminary triage using RAG logic and not a replacement for a licensed doctor. In a medical emergency, please call your local emergency number.
               </div>
             </div>
 
@@ -155,7 +149,7 @@ export default function ConsultationPage() {
                 <div className={`px-4 py-3 rounded-2xl max-w-[80%] ${
                   msg.role === 'user' 
                     ? 'bg-primary text-white rounded-tr-sm' 
-                    : (riskLevel === 'emergency' && idx === messages.length - 1)
+                    : (reasoning?.risk_level === 'emergency' && idx === messages.length - 1)
                       ? 'bg-red-50 border border-red-200 text-red-900 rounded-tl-sm shadow-sm font-medium'
                       : 'bg-white border border-slate-200 text-slate-800 rounded-tl-sm shadow-sm'
                 }`}>
@@ -164,13 +158,12 @@ export default function ConsultationPage() {
               </div>
             ))}
 
-            {/* Doctor Referral Hook (Shown after risk is evaluated, if not emergency) */}
-            {riskLevel && riskLevel !== 'emergency' && messages.length > 5 && (
+            {reasoning && reasoning.risk_level !== 'emergency' && messages.length > 5 && (
                <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm max-w-[80%] ml-12">
                  <h4 className="font-semibold text-slate-900 mb-2 flex items-center gap-2">
                    <User className="w-4 h-4 text-primary" /> Specialist Recommendation
                  </h4>
-                 <p className="text-sm text-slate-600 mb-4">Based on your triage, a consultation with a General Practitioner is recommended to confirm the diagnosis.</p>
+                 <p className="text-sm text-slate-600 mb-4">Based on our clinical reasoning, a consultation with a <strong>{reasoning.specialist}</strong> is recommended.</p>
                  <button className="bg-primary text-white w-full py-2.5 rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors flex items-center justify-center gap-2">
                    <Video className="w-4 h-4" /> Book Video Consultation
                  </button>
@@ -194,7 +187,7 @@ export default function ConsultationPage() {
         </div>
 
         {/* Input Area */}
-        <div className="p-4 border-t bg-white">
+        <div className="p-4 border-t bg-white shrink-0">
           <form 
             className="max-w-3xl mx-auto relative flex items-end gap-2"
             onSubmit={(e) => { e.preventDefault(); handleSend(); }}
@@ -202,7 +195,7 @@ export default function ConsultationPage() {
             <textarea 
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Type your symptoms here... (Try typing 'severe chest pain' to test emergency logic)"
+              placeholder="Type your symptoms here..."
               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none min-h-[56px] max-h-32 text-[15px]"
               rows={1}
               onKeyDown={(e) => {
@@ -211,11 +204,11 @@ export default function ConsultationPage() {
                   handleSend();
                 }
               }}
-              disabled={riskLevel === 'emergency'}
+              disabled={reasoning?.risk_level === 'emergency'}
             />
             <button 
               type="submit"
-              disabled={!input.trim() || isTyping || riskLevel === 'emergency'}
+              disabled={!input.trim() || isTyping || reasoning?.risk_level === 'emergency'}
               className="h-14 w-14 shrink-0 bg-primary text-white rounded-xl flex items-center justify-center hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               <Send className="w-5 h-5 ml-1" />
@@ -224,30 +217,38 @@ export default function ConsultationPage() {
         </div>
       </div>
 
-      {/* Sidebar: Anamnesis Summary */}
-      <div className="hidden lg:flex w-80 bg-slate-50 flex-col p-6 overflow-y-auto">
+      {/* Sidebar: RAG Clinical Reasoning Trace */}
+      <div className="hidden lg:flex w-[400px] bg-slate-50 flex-col p-6 overflow-y-auto border-l border-slate-200">
         <h3 className="font-semibold text-slate-900 mb-6 flex items-center gap-2">
-          <FileText className="w-5 h-5 text-primary" />
-          Live Anamnesis
+          <FileSearch className="w-5 h-5 text-primary" />
+          Clinical Reasoning Trace
         </h3>
         
         {messages.length > 1 ? (
-          <div className="space-y-6">
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative">
-              <div className="absolute top-4 right-4 max-w-[50%]">
-                <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium uppercase tracking-wider ${
-                  riskLevel === 'emergency' ? 'bg-red-100 text-red-700' : 
-                  riskLevel === 'urgent' ? 'bg-orange-100 text-orange-700' :
-                  riskLevel === 'moderate' ? 'bg-yellow-100 text-yellow-700' :
-                  'bg-slate-100 text-slate-600'
+          <div className="space-y-4">
+            
+            {/* Risk Indicator */}
+            {reasoning && (
+                <div className={`p-3 rounded-lg border flex items-center gap-3 ${
+                    reasoning.risk_level === 'emergency' ? 'bg-red-50 border-red-200 text-red-800' : 
+                    reasoning.risk_level === 'urgent' ? 'bg-orange-50 border-orange-200 text-orange-800' :
+                    reasoning.risk_level === 'moderate' ? 'bg-yellow-50 border-yellow-200 text-yellow-800' :
+                    'bg-slate-50 border-slate-200 text-slate-800'
                 }`}>
-                  {riskLevel ? `${riskLevel} RISK` : 'IN PROGRESS'}
-                </span>
-              </div>
+                    <AlertCircle className="w-5 h-5 shrink-0" />
+                    <div>
+                        <div className="text-[10px] uppercase font-bold opacity-70 tracking-wider">Assessed Risk</div>
+                        <div className="font-semibold capitalize">{reasoning.risk_level} Risk</div>
+                    </div>
+                </div>
+            )}
 
-              <div className="mb-4 mt-2">
-                <div className="text-xs text-slate-500 font-medium mb-1">Reported Symptoms</div>
-                <div className="flex flex-wrap gap-2 mt-2">
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-5">
+              
+              {/* Symptoms */}
+              <div>
+                <div className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-2">Primary Symptoms</div>
+                <div className="flex flex-wrap gap-2">
                   {symptoms.map((s, i) => (
                     <span key={i} className="px-2.5 py-1 bg-slate-100 border border-slate-200 text-slate-700 text-xs rounded-lg max-w-full truncate" title={s}>
                       {s.length > 25 ? s.substring(0, 25) + '...' : s}
@@ -255,34 +256,74 @@ export default function ConsultationPage() {
                   ))}
                 </div>
               </div>
+
+              {reasoning ? (
+                 <>
+                    {/* Assessment Narrative */}
+                    <div>
+                        <div className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-2">Clinical Assessment</div>
+                        <p className="text-sm text-slate-800 leading-relaxed bg-slate-50 p-3 rounded-lg border border-slate-100 whitespace-pre-wrap">
+                            {reasoning.assessment.split('\n\nClinical References')[0]}
+                        </p>
+                    </div>
+
+                    {/* Differential */}
+                    <div>
+                        <div className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-2">Possible Causes</div>
+                        <ul className="list-disc pl-4 space-y-1">
+                        {reasoning.possible_causes.map((cause, idx) => (
+                            <li key={idx} className={`text-sm ${reasoning.risk_level === 'emergency' ? 'text-red-700 font-medium' : 'text-slate-700'}`}>
+                            {cause}
+                            </li>
+                        ))}
+                        </ul>
+                    </div>
+
+                    {/* Tests */}
+                    <div>
+                        <div className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-2">Recommended Tests</div>
+                        <div className="flex flex-wrap gap-2">
+                            {reasoning.recommended_tests.map((test, idx) => (
+                                <span key={idx} className="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded text-xs">
+                                    {test}
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* RAG References */}
+                    {reasoning.assessment.includes('Clinical References utilized:') && (
+                        <div>
+                            <div className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-2 flex flex-wrap items-center gap-1">
+                                RAG Clinical References
+                            </div>
+                            <div className="bg-green-50 text-green-800 border border-green-200 p-3 rounded-lg text-xs leading-relaxed">
+                                {reasoning.assessment.split('Clinical References utilized: ')[1]}
+                            </div>
+                        </div>
+                    )}
+                 </>
+              ) : (
+                <div className="flex items-center justify-center p-8 text-slate-400">
+                    <Activity className="w-6 h-6 animate-pulse" />
+                </div>
+              )}
             </div>
 
-            {possibleCauses.length > 0 && (
-              <div className={`${riskLevel === 'emergency' ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'} border p-4 rounded-xl shadow-sm`}>
-                <h4 className={`flex items-center gap-2 text-sm font-bold mb-3 ${riskLevel === 'emergency' ? 'text-red-800' : 'text-green-800'}`}>
-                  <AlertCircle className="w-4 h-4" />
-                  Differential Diagnosis
-                </h4>
-                <ul className="list-disc pl-5 space-y-1 mb-4">
-                  {possibleCauses.map((cause, idx) => (
-                    <li key={idx} className={`text-xs ${riskLevel === 'emergency' ? 'text-red-700' : 'text-green-700'}`}>
-                      {cause}
-                    </li>
-                  ))}
-                </ul>
-                <button className={`w-full bg-white border text-xs font-semibold py-2 rounded-lg transition-colors ${
-                  riskLevel === 'emergency' 
+            {reasoning && reasoning.risk_level !== 'emergency' && (
+                <button className={`w-full bg-white border text-sm font-semibold py-2.5 rounded-lg transition-colors ${
+                  reasoning.risk_level === 'emergency' 
                     ? 'border-red-300 text-red-700 hover:bg-red-100' 
-                    : 'border-green-300 text-green-700 hover:bg-green-100'
+                    : 'border-slate-300 text-slate-700 hover:bg-slate-100'
                 }`}>
-                  Generate Full PDF Report
+                  Generate Patient Report
                 </button>
-              </div>
             )}
           </div>
         ) : (
-          <div className="text-sm text-slate-500 text-center py-10 border-2 border-dashed border-slate-200 rounded-xl">
-            Summary will build automatically as you chat.
+          <div className="text-sm text-slate-500 text-center py-10 flex flex-col items-center border-2 border-dashed border-slate-200 rounded-xl">
+            <Activity className="w-8 h-8 text-slate-300 mb-3" />
+            Clinical evidence vector search will build automatically as you chat.
           </div>
         )}
       </div>
